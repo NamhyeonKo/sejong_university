@@ -1,0 +1,17 @@
+#   문서 파일
+*.doc
+*.docx
+*.pdf
+
+#   압축 파일
+*.zip
+*.tar.gz
+
+#   mac ds store
+.DS_Store
+._.DS_Store
+**/.DS_Store
+**/._.DS_Store
+
+#   숨김 파일
+.vscode
