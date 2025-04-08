@@ -1,9 +1,7 @@
 import numpy as np
-from math import gcd
 import tkinter as tk
 from tkinter import ttk
 import random
-import string
 
 #   Change num to char or char to num
 def char_to_num(c):
