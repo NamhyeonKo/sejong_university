@@ -18,7 +18,7 @@ int main(){
     } else{ /*  부모 프로세스 */
         /*  부모가 자식이 완료되기를 기다림 */
         wait(NULL);
-        printf("Child Complete");
+        printf("Child Complete\n");
         printf("I am the parent %d\n", pid);
     }
 
