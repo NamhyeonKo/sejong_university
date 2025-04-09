@@ -1,4 +1,4 @@
-//  21011724 고남현
+/* 21011724 고남현 */
 #include <sys/types.h>
 #include <stdio.h>
 #include <unistd.h>
@@ -6,18 +6,20 @@
 int main(){
     pid_t pid;
 
+    /*  새로운 프로세스 생성, fork() */
     pid = fork();
 
-    if (pid < 0){   //  fork() 실패
+    if (pid < 0){   /*  fork() 실패 시 에러 */
         printf(stderr, "Fork Failed");
         return 1;
-    } else if(pid == 0){    //  자식 프로세스
+    } else if(pid == 0){    /*  자식 프로세스 */
         printf("I am the child %d\n", pid);
         execlp("/bin/ls","ls",NULL);
-    } else{ //  부모 프로세스
-        printf("I am the parent %d\n", pid);
+    } else{ /*  부모 프로세스 */
+        /*  부모가 자식이 완료되기를 기다림 */
         wait(NULL);
         printf("Child Complete");
+        printf("I am the parent %d\n", pid);
     }
 
     return 0;

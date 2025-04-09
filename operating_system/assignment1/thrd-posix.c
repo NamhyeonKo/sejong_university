@@ -1,8 +1,40 @@
-//  21011724 고남현
-#include <sys/types.h>
+/* 21011724 고남현 */
+#include <pthread.h>
 #include <stdio.h>
-#include <unistd.h>
 
+int sum;    /* 스레드간 공유될 데이터 */
+void *runner(void *param);   /* 스레드가 호출할 함수 */
+
+int main(int argc, char *argv[]){
+    pthread_t tid;  /* 스레드 id */
+    pthread_attr_t attr;    /* 스레드 속성 */
+
+    if (argc != 2){
+        fprintf(stderr, "main함수 인자 개수 에러(인자 2개 입력 받아야함)");
+        return -1;
+    }
+    if (atoi(argv[1]) < 0){
+        fprintf(stderr, "입력 에러 (양수 입력 받아야함)");
+        return -1;
+    }
+
+    pthread_attr_init(&attr);   /* 기본 속성 가져오기 */
+    pthread_create(&tid, &attr, runner, argv[1]);   /* 스레드 생성 */
+    pthread_join(tid, NULL);    /* 스레드 종료 기다리기 */
+
+    printf("sum = %d\n", sum);
+
+    return 0;
+}
+
+void *runner(void *param){  /* 스레드가 실행할 함수 */
+    int i, upper = atoi(param); /* 파라미터 정수로 바꿔주기 */
+    sum = 0;
+
+    for (i = 1; i <= upper; i++) sum += i;
+
+    pthread_exit(0);    /* 스레드 종료 */
+}
 
 /*
  thrd-posix.c 설명
