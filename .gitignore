@@ -17,5 +17,6 @@
 **/._.DS_Store
 
 #   숨김 파일
-.vscode
+.*
 /venv
+!.gitignore
