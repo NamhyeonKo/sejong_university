@@ -1,5 +1,5 @@
 # shift, substitution, vigenere
-from gui.crypto_gui1 import CryptoApp
+from gui.assignment1_gui import CryptoApp
 
 if __name__ == "__main__":
     app = CryptoApp()
