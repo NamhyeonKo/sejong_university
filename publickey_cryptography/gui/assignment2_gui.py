@@ -1,9 +1,7 @@
-# gui/assignment2_gui.py
 import tkinter as tk
 from tkinter import ttk
 
 from crypto_pkg.playfair       import playfair_cipher
-from crypto_pkg.shift_cipher   import shift_cipher
 from crypto_pkg.analysis       import brute_force_shift, frequency_analysis
 
 class CryptoApp(tk.Tk):
