@@ -1,3 +1,4 @@
+# --- DES Tables ---
 # PC-1 table (64 bits to 56)
 pc1_table = [
     57,49,41,33,25,17,9,
@@ -128,137 +129,143 @@ ip_inverse_table = [
     33, 1, 41, 9, 49, 17, 57, 25
 ]
 
-def phase1_A_permutation(k) -> str:
-    # make K from hex to binary
-    bin_k = bin(k)[2:].zfill(64)
-    print(f"K = {hex(k)}\nK (binary) = {bin_k}\n")
+# --- Helper Functions ---
+def hex_to_bin(hex_str, pad_to_bits=64):
+    return bin(int(hex_str, 16))[2:].zfill(pad_to_bits)
 
-    # make K+ using with pc-1 (64 bit -> 56 bit)
-    k_plus = ''
-    for pc1 in pc1_table:
-        k_plus += bin_k[pc1-1]
-    print(f"K+ = {k_plus}\n")
+def bin_to_hex(bin_str):
+    return hex(int(bin_str, 2))[2:].upper().zfill(16) # Ensure 16 hex chars for 64 bits
 
-    # C0 (left 28 bit), D0 (right 28 bit)
+def permute(input_str, table):
+    return ''.join([input_str[pos - 1] for pos in table])
+
+def left_shift(value, shifts):
+    width = len(value)
+    return value[shifts:] + value[:shifts]
+
+# --- Phase 1: Key Schedule ---
+
+def phase1_A_permutation(k_hex: str) -> tuple[str, str, str]:
+    # Phase 1-A: Permutation
+    bin_k = hex_to_bin(k_hex, 64)
+    k_plus = permute(bin_k, pc1_table)
     c0 = k_plus[:28]
     d0 = k_plus[28:]
-    print(f"C0 = {c0}\nD0 = {d0}\n")
+    return c0, d0, bin_k
 
-    return c0, d0
+def generate_subkeys(k_hex: str) -> tuple[list[str], list[str], list[str], str]:
+    c = [''] * 17
+    d = [''] * 17
+    keys = [''] * 17
 
-def phase1_B_using_left_shift_table(value,round):
-    bits = round_shifts[round]
-    width = 28
-    value = int(value,2)
-    new_value = bin(((value << bits) | (value >> (width - bits))) & ((1 << width) - 1))[2:].zfill(28)
-    return new_value
+    c[0], d[0], initial_k_bin = phase1_A_permutation(k_hex)
 
-def phase1_C_applying_pc2(c,d):
-    cd = c + d
-    k = ''
-
-    for pc2 in pc2_table:
-        k += cd[pc2-1]
-
-    return k
-
-def phase2_A_message_permutation(m):
-    ip = ''
-
-    for it in ip_table:
-        ip += m[it-1]
-    print(f"ip = {ip}")
-
-    return ip[:32], ip[32:]
-
-def expansion_32bit_to_48bit(r):
-    new_r = ''
-    for e in e_bit_table:
-        new_r += r[e-1]
-    print(f"expansion r0 = {new_r}")
-    return new_r
-
-def s_box(s_input, index):
-    row = int(s_input[0] + s_input[5],2)
-    col = int(s_input[1:5], 2)
-
-    value = s_boxes[index][row][col]
-    print(value,end=' ')
-
-    return bin(value)[2:].zfill(4)
-
-def phase2_B_round_algorithm(l, r, k):
-    new_l = r
-
-    # K xor R
-    e_r = expansion_32bit_to_48bit(r)
-    f_kr = int(k,2) ^ int(e_r,2)
-    f_kr_bin = bin(f_kr)[2:].zfill(48)
-    print(f"f_kr_bin = {f_kr_bin}")
-
-    # s boxing
-    s_f_kr_bin = ''
-    print("s_box result : ")
-    for i in range(8):
-        s_f_kr_bin += s_box(f_kr_bin[6*i:6*i+6],i)
-    print("\n")
-    print(f"s(k1 xor e(r0)) = {s_f_kr_bin}")
-    
-    # p boxing
-    p_s_f_kr_bin = ''
-    for p in p_box_table:
-        p_s_f_kr_bin += s_f_kr_bin[p-1]
-    print(f"p(s(k1 xor e(r0))) = {p_s_f_kr_bin}")
-
-    new_r = bin(int(l,2) ^ int(p_s_f_kr_bin,2))[2:].zfill(32)
-
-    return new_l, new_r
-
-def feistel_cipher(plain_text, keys):
-    # 1. 초기 IP 수행
-    l , r = phase2_A_message_permutation(plain_text)
-    print(f"l0 = {l}\nr0 = {r}")
-
-    # 2. 16라운드 반복
     for i in range(1, 17):
-        l, r = phase2_B_round_algorithm(l, r, keys[i])
-        print(f"[Round {i}] L = {l} / R = {r}")
+        # Phase 1-B: Using Left Shift Table
+        shifts = round_shifts[i]
+        c[i] = left_shift(c[i-1], shifts)
+        d[i] = left_shift(d[i-1], shifts)
 
-    # 3. 마지막 라운드 후 L, R를 swap 없이 그대로 결합
-    preoutput = r + l  # note: no swap here for DES
+        # Phase 1-C: Applying PC-2 (56 bits to 48)
+        keys[i] = permute(c[i] + d[i], pc2_table)
+    return keys[1:], c, d, initial_k_bin
 
-    # 4. 최종 IP^-1 수행
-    output = ''
-    for pos in ip_inverse_table:
-        output += preoutput[pos - 1]
+# --- Phase 2: Feistel Network Rounds ---
+def phase2_A_message_permutation(m_bin: str) -> tuple[str, str]:
+    # Phase 2-A: Message Permutation (IP Table)
+    ip_output = permute(m_bin, ip_table)
+    return ip_output[:32], ip_output[32:] # L0, R0
 
-    return output
+def expansion_32bit_to_48bit(r_block: str) -> str:
+    # Phase 2-B-1: Round Algorithm (Expansion / E bit Selection table)
+    return permute(r_block, e_bit_table)
 
-#! ---------------------
-#! example
+def s_box_substitution(s_input_48bit: str) -> tuple[str, str]:
+    # Phase 2-B-2: Round Algorithm
+    s_output_32bit = ''
+    s_box_decimal_values = []
+    for i in range(8):
+        six_bit_block = s_input_48bit[6*i : 6*i+6]
+        row = int(six_bit_block[0] + six_bit_block[5], 2)
+        col = int(six_bit_block[1:5], 2)
 
-plain_text = "104050AEE9623BEF"
-plain_text_bin = bin(int(plain_text,16))[2:].zfill(64)
-hex_k = "CFBAEE99876512DB"
-int_k = int(hex_k, 16)
+        value = s_boxes[i][row][col]
+        s_box_decimal_values.append(str(value))
+        s_output_32bit += bin(value)[2:].zfill(4)
+    return s_output_32bit, " ".join(s_box_decimal_values)
 
-c0, d0 = phase1_A_permutation(int_k)
-c = [c0]
-d = [d0]
+def p_box_permutation(s_box_output_32bit: str) -> str:
+    # Phase 2-B-3: Round Algorithm
+    return permute(s_box_output_32bit, p_box_table)
 
-for i in range(1,16+1):
-    c.append(phase1_B_using_left_shift_table(c[i-1],i))
-    d.append(phase1_B_using_left_shift_table(d[i-1],i))
-    print(f"C{i} = {c[i]}\nD{i} = {d[i]}")
-print("\n")
+def feistel_round(L: str, R: str, subkey: str, round_num: int, log_func) -> tuple[str, str, str, str, str, str]:
+    new_L = R
 
-k0 = bin(int_k)[2:].zfill(64)
-k = [k0]
+    # Calculate f(R, K)
+    expanded_R = expansion_32bit_to_48bit(R)
+    xor_result = bin(int(expanded_R, 2) ^ int(subkey, 2))[2:].zfill(48)
 
-for i in range(1,16+1):
-    k.append(phase1_C_applying_pc2(c[i],d[i]))
-    print(f"k{i} = {k[i]}")
+    s_box_output_bin, s_box_decimal_str = s_box_substitution(xor_result)
+    p_box_output = p_box_permutation(s_box_output_bin)
 
-final = feistel_cipher(plain_text_bin,k)
-final_hex = hex(int(final,2))[2:].zfill(16)
-print(f"output = {final_hex}")
+    new_R = bin(int(L, 2) ^ int(p_box_output, 2))[2:].zfill(32)
+
+    log_func(f"    L_{round_num-1} = {L}")
+    log_func(f"    R_{round_num-1} = {R}")
+    log_func(f"    K_{round_num} = {subkey}")
+    log_func(f"    Expanded R = {expanded_R}")
+    log_func(f"    (E(R) XOR K) = {xor_result}")
+    log_func(f"    S-box results (decimal): {s_box_decimal_str}")
+    log_func(f"    S-box output (binary) = {s_box_output_bin}")
+    log_func(f"    P-box output = {p_box_output}")
+    log_func(f"    New L_{round_num} (R_{round_num-1}) = {new_L}")
+    log_func(f"    New R_{round_num} (L_{round_num-1} XOR P(S(E(R) XOR K))) = {new_R}")
+
+    return new_L, new_R, expanded_R, xor_result, s_box_output_bin, p_box_output # Return intermediates for GUI
+
+# --- Main DES Operations ---
+def des_operation(input_text_hex: str, keys: list[str], mode: str, log_func) -> dict:
+    log_func(f"\n--- {mode.upper()} Process ---")
+    input_text_bin = hex_to_bin(input_text_hex, 64)
+    log_func(f"Input ({mode} hex) = {input_text_hex}")
+    log_func(f"Input ({mode} binary) = {input_text_bin}\n")
+
+    # 1. Initial Permutation (IP)
+    L, R = phase2_A_message_permutation(input_text_bin)
+    log_func(f"Initial Permutation (IP) output:")
+    log_func(f"  L0 = {L}")
+    log_func(f"  R0 = {R}\n")
+
+    # Store intermediates for GUI display
+    l1_val, r1_val, s_box_out_r1, p_box_out_r1 = "", "", "", ""
+
+    # 2. 16 Rounds of Feistel Cipher
+    current_keys = keys if mode == "encrypt" else keys[::-1] # K1-K16 for encrypt, K16-K1 for decrypt
+
+    for i in range(1, 17):
+        log_func(f"\n--- {mode.upper()} Round {i} ---")
+        current_L, current_R, _, _, current_s_box_out, current_p_box_out = feistel_round(L, R, current_keys[i-1], i, log_func)
+        L = current_L
+        R = current_R
+
+        if i == 1: # Capture L1 and R1 and S-box, P-box output of first round
+            l1_val = L
+            r1_val = R
+            s_box_out_r1 = current_s_box_out
+            p_box_out_r1 = current_p_box_out
+
+    # 3. Swap L and R (after 16 rounds, before final IP inverse)
+    preoutput = R + L
+    log_func(f"\nPreoutput (R16L16 for Enc/R0L0 for Dec) = {preoutput}")
+
+    # --- Phase 3: Final step ---
+    # 4. Final Permutation (IP Inverse)
+    final_output_bin = permute(preoutput, ip_inverse_table)
+
+    return {
+        'final_output_bin': final_output_bin,
+        'l1_val': l1_val,
+        'r1_val': r1_val,
+        's_box_out_r1': s_box_out_r1,
+        'p_box_out_r1': p_box_out_r1
+    }
