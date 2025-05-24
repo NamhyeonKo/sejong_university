@@ -3,7 +3,7 @@ from tkinter import ttk, scrolledtext
 from tkinter import messagebox
 
 # Import DES functions from your 'des_algorithm.py' library file
-from crypto_pkg.des import (
+from des import (
     hex_to_bin, bin_to_hex, permute,
     generate_subkeys,
     des_operation
