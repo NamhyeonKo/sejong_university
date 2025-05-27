@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OAuth 2.0 Honeytoken Client UI</title>
+    <style>
+        body { font-family: sans-serif; margin: 20px; background-color: #f4f4f4; color: #333; }
+        .container { background-color: #fff; padding: 20px; border-radius: 8px; box-shadow: 0 0 10px rgba(0,0,0,0.1); }
+        h1, h2, h3 { color: #333; }
+        label { display: block; margin-top: 10px; }
+        input[type="text"], input[type="password"] { width: calc(100% - 22px); padding: 10px; margin-top: 5px; border: 1px solid #ddd; border-radius: 4px; }
+        input[type="submit"], button { background-color: #007bff; color: white; padding: 10px 15px; border: none; border-radius: 4px; cursor: pointer; margin-top: 10px; }
+        input[type="submit"]:hover, button:hover { background-color: #0056b3; }
+        .token-info { margin-top: 20px; padding: 10px; background-color: #e9ecef; border-radius: 4px; word-wrap: break-word; }
+        .messages { list-style: none; padding: 0; }
+        .messages li { padding: 10px; margin-top: 10px; border-radius: 4px; }
+        .messages .success { background-color: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
+        .messages .error { background-color: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; }
+        .messages .info { background-color: #cce5ff; color: #004085; border: 1px solid #b8daff; }
+        .messages .warning { background-color: #fff3cd; color: #856404; border: #ffeeba 1px solid;}
+        .hidden { display: none; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Client Web Application</h1>
+
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                <ul class="messages">
+                {% for category, message in messages %}
+                    <li class="{{ category }}">{{ message }}</li>
+                {% endfor %}
+                </ul>
+            {% endif %}
+        {% endwith %}
+        
+        {% if session.access_token %}
+            <h3>Welcome! You are logged in.</h3>
+            <div class="token-info">
+                <strong>Access Token (first 20 chars):</strong> <span id="access_token_display">{{ session.access_token[:20] if session.access_token else 'N/A' }}...</span><br>
+                <strong>Refresh Token (first 20 chars):</strong> {{ session.refresh_token[:20] if session.refresh_token else 'N/A' }}...<br>
+                <strong>Access Token Expires At (UTC):</strong> <span id="expires_at_display">{{ session.expires_at_iso if session.expires_at_iso else 'N/A' }}</span>
+            </div>
+            <p id="auto_refresh_status"></p>
+
+            <form action="{{ url_for('resource_action') }}" method="POST" style="margin-top:15px;">
+                <input type="submit" value="Access Protected Resource (with current AT)">
+            </form>
+            <hr>
+            <form action="{{ url_for('resource_action') }}" method="POST" style="margin-top:15px;">
+                <label for="manual_token">Test with specific token (e.g., an old/honeytoken):</label>
+                <input type="text" id="manual_token" name="manual_token" placeholder="Paste token here">
+                <input type="submit" value="Access Resource with this Token">
+            </form>
+            <hr>
+            <a href="{{ url_for('logout_action') }}"><button>Logout</button></a>
+        {% else %}
+            <h3>Login</h3>
+            <form action="{{ url_for('login_action') }}" method="POST">
+                <label for="username">Username:</label>
+                <input type="text" id="username" name="username" value="alice" required>
+                <label for="password">Password:</label>
+                <input type="password" id="password" name="password" value="password123" required>
+                <input type="submit" value="Login">
+            </form>
+        {% endif %}
+
+        <div id="initial-token-data" class="hidden"
+             data-access-token="{{ token_info.access_token }}"
+             data-refresh-token="{{ token_info.refresh_token }}"
+             data-expires-at-iso="{{ token_info.expires_at_iso }}"
+             data-lifespan="{{ token_info.access_token_lifespan }}"
+             data-safety-margin="{{ token_info.safety_margin }}">
+        </div>
+         <hr>
+        <p><strong>API Call Result:</strong><br>
+           {{ session.pop('last_api_message', 'No API calls yet.') }}
+        </p>
+
+    </div>
+
+    <script>
+        let autoRefreshTimer = null;
+        // JavaScript 전역 변수 대신, 필요시 세션 스토리지나 로컬 스토리지를 사용하거나,
+        // UI 업데이트 및 타이머 재설정을 위한 데이터는 항상 서버 응답을 기준으로 합니다.
+        // 여기서는 단순화를 위해 전역 변수를 유지하되, 업데이트 시점을 명확히 합니다.
+        let currentAccessTokenForDisplay = null; // UI 표시용 (실제 사용은 서버 세션 토큰)
+        let tokenExpiresAtUTCForDisplay = null; // UI 표시용 (Date 객체)
+
+        function updateTokenInfoOnPage(accessToken, expiresAtISO) {
+            const atDisplay = document.getElementById('access_token_display');
+            const expDisplay = document.getElementById('expires_at_display');
+            
+            currentAccessTokenForDisplay = accessToken; // JS 변수 업데이트
+            tokenExpiresAtUTCForDisplay = expiresAtISO ? new Date(expiresAtISO) : null;
+
+            if (atDisplay) atDisplay.textContent = accessToken ? accessToken.substring(0, 20) + '...' : 'N/A';
+            if (expDisplay) expDisplay.textContent = expiresAtISO || 'N/A';
+        }
+        
+        function performAutoRefresh(initialSafetyMargin) {
+            console.log('[Client JS] Attempting automatic token refresh via performAutoRefresh...');
+            document.getElementById('auto_refresh_status').textContent = 'Attempting auto-refresh...';
+            
+            fetch("{{ url_for('js_auto_refresh') }}", {
+                method: 'POST',
+                headers: {
+                    // CSRF 토큰이 있다면 여기에 추가
+                    'Content-Type': 'application/x-www-form-urlencoded', // Flask 세션을 사용하므로 body는 불필요
+                },
+                // body: '' // POST지만 바디 없이 세션의 RT 사용
+            })
+            .then(response => {
+                if (!response.ok) {
+                    // 서버에서 4xx, 5xx 응답을 받으면 에러로 처리
+                    return response.json().then(errData => {
+                        throw { status: response.status, data: errData };
+                    });
+                }
+                return response.json();
+            })
+            .then(data => {
+                if (data.access_token && data.expires_in) {
+                    console.log('[Client JS] Auto refresh successful:', data);
+                    // 세션은 서버에서 업데이트되었으므로, UI와 JS 타이머만 새 정보로 업데이트
+                    updateTokenInfoOnPage(data.access_token, data.expires_at_iso);
+                    setAutoRefreshTimer(data.expires_in, initialSafetyMargin); // 새 토큰으로 다시 타이머 설정
+                    document.getElementById('auto_refresh_status').textContent = 'Token refreshed successfully. Timer reset.';
+                } else {
+                    // 예상치 못한 응답 형식 또는 백엔드 로직 오류
+                    console.error('[Client JS] Auto refresh failed - unexpected data format:', data);
+                    document.getElementById('auto_refresh_status').textContent = `Auto refresh failed: ${data.error || 'Unknown error'}. Please login again.`;
+                    if (data.force_logout) {
+                        window.location.reload();
+                    }
+                }
+            })
+            .catch(errorInfo => {
+                let errorMsg = 'Error during auto refresh fetch.';
+                if (errorInfo && errorInfo.data && errorInfo.data.error) {
+                    errorMsg = `Auto refresh failed: ${errorInfo.data.error}.`;
+                } else if (errorInfo && errorInfo.status) {
+                    errorMsg = `Auto refresh failed with server status: ${errorInfo.status}.`;
+                } else {
+                     console.error('[Client JS] Error during auto refresh fetch:', errorInfo);
+                }
+                
+                document.getElementById('auto_refresh_status').textContent = errorMsg + ' Please login again.';
+                
+                // force_logout 플래그가 있거나 특정 상태 코드(예: 401)면 로그아웃 처리
+                if ((errorInfo && errorInfo.data && errorInfo.data.force_logout) || (errorInfo && errorInfo.status === 401) ) {
+                     window.location.href = "{{ url_for('logout_action') }}";
+                }
+            });
+        }
+
+        function setAutoRefreshTimer(expiresInSeconds, safetyMarginSeconds) {
+            clearTimeout(autoRefreshTimer);
+
+            const refreshInMilliseconds = (expiresInSeconds - safetyMarginSeconds) * 1000;
+
+            if (refreshInMilliseconds > 0) {
+                const refreshTime = Math.round(refreshInMilliseconds / 1000);
+                document.getElementById('auto_refresh_status').textContent = `Token will auto-refresh in about ${refreshTime} seconds.`;
+                console.log(`[Client JS] Setting auto-refresh timer for ${refreshTime} seconds.`);
+                autoRefreshTimer = setTimeout(() => {
+                    performAutoRefresh(safetyMarginSeconds);
+                }, refreshInMilliseconds);
+            } else {
+                const statusMsg = 'Token has very short life or already expired based on provided expiresIn. Attempting refresh now if possible.';
+                document.getElementById('auto_refresh_status').textContent = statusMsg;
+                console.log(`[Client JS] ${statusMsg} (expiresIn: ${expiresInSeconds}, safety: ${safetyMarginSeconds})`);
+                // 만료 시간이 매우 짧거나 이미 지났다고 판단되면 즉시 재발급 시도 (또는 로그인 유도)
+                // 단, 무한 루프를 피하기 위해, 정말 필요한 경우에만 즉시 호출
+                if (expiresInSeconds > 0) { // 토큰 자체가 유효기간이 있는 경우에만 시도
+                    performAutoRefresh(safetyMarginSeconds);
+                } else {
+                     document.getElementById('auto_refresh_status').textContent = 'Token already expired or invalid. Please login again.';
+                }
+            }
+        }
+
+        document.addEventListener('DOMContentLoaded', function() {
+            const initialTokenDiv = document.getElementById('initial-token-data');
+            const autoRefreshStatusElem = document.getElementById('auto_refresh_status');
+
+            if (initialTokenDiv && initialTokenDiv.dataset.accessToken && initialTokenDiv.dataset.expiresAtIso) {
+                // 초기 토큰 정보로 UI 업데이트 (JavaScript 변수에도 할당)
+                updateTokenInfoOnPage(initialTokenDiv.dataset.accessToken, initialTokenDiv.dataset.expiresAtIso);
+                // currentRefreshToken은 JS에서 직접 사용하지 않으므로, 필요시 여기서 세팅. (현재는 서버 세션에 의존)
+
+                const lifespan = parseInt(initialTokenDiv.dataset.lifespan, 10);
+                const safetyMargin = parseInt(initialTokenDiv.dataset.safetyMargin, 10);
+                const initialExpiresAtUTC = new Date(initialTokenDiv.dataset.expiresAtIso); // Date 객체로 변환
+
+                const nowUTC = new Date();
+                const remainingMilliseconds = initialExpiresAtUTC.getTime() - nowUTC.getTime();
+                let remainingSeconds = Math.max(0, Math.floor(remainingMilliseconds / 1000));
+                
+                console.log(`[Client JS] Page loaded. Token expires at: ${initialExpiresAtUTC.toISOString()}. Remaining: ${remainingSeconds}s`);
+
+                if (remainingSeconds > safetyMargin) {
+                    setAutoRefreshTimer(remainingSeconds, safetyMargin);
+                } else if (remainingSeconds > 0) { // 만료는 안됐지만 safety margin 보다 적게 남음
+                    console.log(`[Client JS] Initial token nearing expiry (in ${remainingSeconds}s). Triggering refresh immediately.`);
+                    performAutoRefresh(safetyMargin); // 즉시 재발급 시도
+                } else { // 이미 만료됨
+                    console.log('[Client JS] Initial token already expired or invalid.');
+                    if(autoRefreshStatusElem) autoRefreshStatusElem.textContent = 'Initial token expired. Please login.';
+                }
+            } else {
+                 if(autoRefreshStatusElem) autoRefreshStatusElem.textContent = 'Not logged in or no token data on page load.';
+            }
+        });
+    </script>
+</body>
+</html>
