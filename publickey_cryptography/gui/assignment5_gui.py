@@ -1,4 +1,4 @@
-# assignment5.py (Tkinter GUI - Uses AESCipher class from aes_gemini2.py)
+# assignment5.py (Tkinter GUI - Uses AESCipher class from aes.py)
 
 import tkinter as tk
 from tkinter import ttk, scrolledtext, messagebox
@@ -6,17 +6,17 @@ import hashlib
 import binascii
 import traceback
 
-# --- Import the AESCipher class from aes_gemini2.py ---
+# --- Import the AESCipher class from aes.py ---
 try:
     # AESCipher class itself and global constants S_BOX, INV_S_BOX, RCON
     from crypto_pkg.aes import AESCipher, S_BOX, INV_S_BOX, RCON
 except ImportError:
     messagebox.showerror("Import Error",
-                         "Could not import AESCipher or constants from aes_gemini2.py. "
+                         "Could not import AESCipher or constants from aes.py. "
                          "Make sure the file exists and is correctly structured.")
     exit()
 except Exception as e:
-    messagebox.showerror("Import Error", f"Error importing from aes_gemini2.py: {e}")
+    messagebox.showerror("Import Error", f"Error importing from aes.py: {e}")
     exit()
 
 
@@ -57,7 +57,7 @@ def _unpad_pkcs7_ui(padded_data: bytes) -> bytes: # Renamed for clarity
 class AESCryptoApp(tk.Tk):
     def __init__(self):
         super().__init__()
-        self.title("AES GUI (Uses AESCipher from aes_gemini2.py)")
+        self.title("AES GUI (Uses AESCipher from aes.py)")
         self.geometry("950x750")
         self.columnconfigure(0, weight=1)
         self.rowconfigure(0, weight=1)
@@ -65,7 +65,7 @@ class AESCryptoApp(tk.Tk):
         self.aes_cipher_instance = None
 
         if not all(hasattr(AESCipher, m) for m in ['encrypt', 'decrypt', '_key_expansion', '_bytes_to_matrix', '_matrix_to_bytes']):
-            messagebox.showerror("AESCipher Error", "AESCipher class from aes_gemini2.py is missing expected methods. Please check aes_gemini2.py.")
+            messagebox.showerror("AESCipher Error", "AESCipher class from aes.py is missing expected methods. Please check aes.py.")
             self.destroy()
             return
         
@@ -149,7 +149,7 @@ class AESCryptoApp(tk.Tk):
         input_key_text = self.input_key_var.get().strip()
         self.aes_cipher_instance = None
         self._clear_logs_and_results(clear_round_keys_display=True)
-        self._log_message("--- Initializing AESCipher (AES-128 from aes_gemini2.py) ---")
+        self._log_message("--- Initializing AESCipher (AES-128 from aes.py) ---")
 
         if not input_key_text:
             messagebox.showerror("Input Error", "Please enter an English key (16 ASCII characters for AESCipher).")
@@ -206,7 +206,7 @@ class AESCryptoApp(tk.Tk):
         
         # IMPORTANT: The AESCipher's _bytes_to_matrix as provided is state[col][row].
         # However, its _shift_rows, _mix_columns, _add_round_key, _sub_bytes expect state[row][col]
-        # for standard AES behavior. If _bytes_to_matrix in aes_gemini2.py is not corrected
+        # for standard AES behavior. If _bytes_to_matrix in aes.py is not corrected
         # to output state[row][col], the class's main encrypt/decrypt will be non-standard.
         # For this logging function, we will proceed ASSUMING that for these _internal_ calls,
         # we should prepare the state in [row][col] format.
