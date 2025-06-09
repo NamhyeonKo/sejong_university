@@ -77,7 +77,7 @@ class AESCipher:
         # PKCS#7 padding
         padding_len = 16 - (len(data) % 16)
         padding = bytes([padding_len] * padding_len)
-        return data
+        return data + padding
 
     def _unpad(self, data):
         padding_len = data[-1]
