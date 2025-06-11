@@ -1,4 +1,3 @@
-# 파일 경로: sejong_university/publickey_cryptography/crypto_pkg/rsa.py
 import random
 import os
 
